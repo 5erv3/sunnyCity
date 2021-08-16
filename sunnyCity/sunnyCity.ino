@@ -816,7 +816,7 @@ void setup()
       configTime(WM_config.TZ, "pool.ntp.org"); 
   #else
       //configTzTime(WM_config.TZ, "pool.ntp.org" );
-      configTzTime(WM_config.TZ, "time.nist.gov", "0.pool.ntp.org", "1.pool.ntp.org");
+      configTzTime(WM_config.TZ, "0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org");
   #endif   
     }
     else
@@ -920,7 +920,7 @@ void setup()
       configTime(WM_config.TZ, "pool.ntp.org"); 
   #else
       //configTzTime(WM_config.TZ, "pool.ntp.org" );
-      configTzTime(WM_config.TZ, "time.nist.gov", "0.pool.ntp.org", "1.pool.ntp.org");
+      configTzTime(WM_config.TZ, "0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org");
   #endif
     }
     else
