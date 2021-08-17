@@ -331,7 +331,7 @@ uint8_t connectMultiWiFi();
 
 #define LED_PIN     13
 #define NUM_LEDS    48
-#define BRIGHTNESS  64
+#define BRIGHTNESS  255
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 CRGB leds[NUM_LEDS];
@@ -682,6 +682,12 @@ void setup()
   // initialize the LED digital pin as an output.
   pinMode(PIN_LED, OUTPUT);
 
+  delay( 1000 );
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+  FastLED.setBrightness(  BRIGHTNESS );
+  fill_rainbow( &(leds[0]), NUM_LEDS, 222);
+  FastLED.show();
+
   Serial.begin(115200);
   while (!Serial);
 
@@ -976,9 +982,6 @@ void setup()
   else
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
 
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-  FastLED.setBrightness(  BRIGHTNESS );
-  
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
 }
@@ -1010,12 +1013,12 @@ void setSingleLED(int8_t hour, int8_t minute, CRGB color){
 
 void updateLedTime() {
 
-  CRGB daylight_color_back = CRGB::White;
-  CRGB night_color_back = CRGB::HotPink;
+  CHSV daylight_color_back = CHSV( 170, 30, 40);
+  CHSV night_color_back = CHSV( 170, 30, 20);
 
-  CRGB color_sun = CRGB::Red;
+  CRGB color_sun = CRGB::Yellow;
 
-  CRGB background_color;
+  CHSV background_color;
 
   Serial.print(F("setting led to timer: "));
 
@@ -1056,20 +1059,26 @@ void loop()
   // put your main code here, to run repeatedly
   check_status();
 
-  if (millis() - last_ledupdate > 5 * 1000 ) {
-    last_ledupdate = millis();
-    updateLedTime();
+  static bool init_in_progress = true;
+
+  if (init_in_progress){
+    init_in_progress = ChangePalettePeriodically();
+    
+    static uint8_t startIndex = 0;
+    startIndex = startIndex + 1; 
+    
+    FillLEDsFromPaletteColors( startIndex);
+    
+    FastLED.show();
+    FastLED.delay(1000 / UPDATES_PER_SECOND);
+  } else {
+    if (millis() - last_ledupdate > 5 * 1000 ) {
+      last_ledupdate = millis();
+      updateLedTime();
+    }
   }
 
-  /*ChangePalettePeriodically();
-    
-  static uint8_t startIndex = 0;
-  startIndex = startIndex + 1; 
   
-  FillLEDsFromPaletteColors( startIndex);
-  
-  FastLED.show();
-  FastLED.delay(1000 / UPDATES_PER_SECOND);*/
 
 }
 
@@ -1092,7 +1101,7 @@ void FillLEDsFromPaletteColors( uint8_t colorIndex)
 // Additionally, you can manually define your own color palettes, or you can write
 // code that creates color palettes on the fly.  All are shown here.
 
-void ChangePalettePeriodically()
+bool ChangePalettePeriodically()
 {
     uint8_t secondHand = (millis() / 1000) % 60;
     static uint8_t lastSecond = 99;
@@ -1109,8 +1118,9 @@ void ChangePalettePeriodically()
         if( secondHand == 40)  { currentPalette = CloudColors_p;           currentBlending = LINEARBLEND; }
         if( secondHand == 45)  { currentPalette = PartyColors_p;           currentBlending = LINEARBLEND; }
         if( secondHand == 50)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = NOBLEND;  }
-        if( secondHand == 55)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; }
+        if( secondHand == 55)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; return false;}
     }
+    return true;
 }
 
 // This function fills the palette with totally random colors.
