@@ -37,6 +37,8 @@
    This example, originally relied on the Double Reset Detector library from https://github.com/datacute/DoubleResetDetector
    To support ESP32, use ESP_DoubleResetDetector library from //https://github.com/khoih-prog/ESP_DoubleResetDetector
  *****************************************************************************************************************************/
+
+#define TESTING 0
  
 #if !( defined(ESP8266) ||  defined(ESP32) )
   #error This code is intended to run on the ESP8266 or ESP32 platform! Please check your Tools->Board setting.
@@ -988,37 +990,50 @@ void setup()
 
 bool isdaylight(int8_t hour){
   //todo: calculate based on sun 
-  if ( hour < 7 && hour < 22 ) {
+  if ( hour > 7 && hour < 22 ) {
     return true;
   }
   return false;
 }
 
-void setSingleLED(int8_t hour, int8_t minute, CRGB color){
-  if (hour >= 12){
-    hour -= 12;
+void setSingleLED(int8_t h, int8_t m, CRGB color){
+  if (h >= 12){
+    h -= 12;
   }
-  if (hour == 0){
+  /*if (hour == 0){
     hour = 12;
-  }
+  }*/
+
+  float hour_f = h;
+  float min_f = m;
+  float led_nb = NUM_LEDS;
 
   // calc leds per hour, use 13 because we have space before the 1 and after 12
-  int ledsperhour = (NUM_LEDS / 13);
-  int lednb = (hour * ledsperhour) + 1 + ((minute * ledsperhour) / 60);
+  float ledsperhour = led_nb / 13.0;
+  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0);
+  int lednb = (int) lednb_f;
   leds[lednb] = color;
+  Serial.print(F("hour/min= "));
+  Serial.print(h);
+  Serial.print(m);
+  Serial.print(F("single led nb_f = , "));
+  Serial.print(lednb_f);
   Serial.print(F("single led nb = "));
   Serial.println(lednb);
 
 }
 
-void updateLedTime() {
+void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
 
-  CHSV daylight_color_back = CHSV( 170, 30, 40);
-  CHSV night_color_back = CHSV( 170, 30, 20);
-
+  CHSV daylight_color_back = CHSV( 170, 30, 70);
+  CHSV night_color_back = CHSV( 170, 80, 40);
   CRGB color_sun = CRGB::Yellow;
+  CRGB color_moon = CRGB::Red;
 
   CHSV background_color;
+  CRGB indicator_color;
+
+  bool daylight;
 
   Serial.print(F("setting led to timer: "));
 
@@ -1027,17 +1042,28 @@ void updateLedTime() {
 
   if (timeinfo.tm_year > 100 )
   {
-    if ( isdaylight(timeinfo.tm_hour) ) {
+#if TESTING
+    daylight = isdaylight(test_hour);
+#else
+    daylight = isdaylight(timeinfo.tm_hour);
+#endif
+    if ( daylight ) {
       background_color = daylight_color_back;
+      indicator_color = color_sun;
       Serial.print(F("daylight, "));
     } else {
       background_color = night_color_back;
+      indicator_color = color_moon;
       Serial.print(F("nightlight, "));
     }
     fill_solid( &(leds[0]), NUM_LEDS, background_color );
+    FastLED.show();
 
-    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, color_sun);
-
+#if TESTING
+    setSingleLED(test_hour, test_min, indicator_color);
+#else
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color);
+#endif
   } else {
     Serial.print(F("TIME NOT SET, ERROR"));
     fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
@@ -1058,8 +1084,11 @@ void loop()
 
   // put your main code here, to run repeatedly
   check_status();
-
+#if TESTING
+  static bool init_in_progress = false;
+#else
   static bool init_in_progress = true;
+#endif
 
   if (init_in_progress){
     init_in_progress = ChangePalettePeriodically();
@@ -1072,10 +1101,19 @@ void loop()
     FastLED.show();
     FastLED.delay(1000 / UPDATES_PER_SECOND);
   } else {
+#if TESTING
+    for (int i=0; i< 24; i++){
+      for (int j=0; j<60; j+=5){
+        updateLedTime(i,j);
+        delay(1);
+      }
+    }
+#else
     if (millis() - last_ledupdate > 5 * 1000 ) {
       last_ledupdate = millis();
       updateLedTime();
     }
+#endif
   }
 
   
