@@ -330,7 +330,7 @@ uint8_t connectMultiWiFi();
 #include <FastLED.h>
 
 #define LED_PIN     13
-#define NUM_LEDS    144
+#define NUM_LEDS    48
 #define BRIGHTNESS  64
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
@@ -983,6 +983,68 @@ void setup()
   currentBlending = LINEARBLEND;
 }
 
+bool isdaylight(int8_t hour){
+  //todo: calculate based on sun 
+  if ( hour < 7 && hour < 22 ) {
+    return true;
+  }
+  return false;
+}
+
+void setSingleLED(int8_t hour, int8_t minute, CRGB color){
+  if (hour >= 12){
+    hour -= 12;
+  }
+  if (hour == 0){
+    hour = 12;
+  }
+
+  // calc leds per hour, use 13 because we have space before the 1 and after 12
+  int ledsperhour = (NUM_LEDS / 13);
+  int lednb = (hour * ledsperhour) + 1 + ((minute * ledsperhour) / 60);
+  leds[lednb] = color;
+  Serial.print(F("single led nb = "));
+  Serial.println(lednb);
+
+}
+
+void updateLedTime() {
+
+  CRGB daylight_color_back = CRGB::White;
+  CRGB night_color_back = CRGB::HotPink;
+
+  CRGB color_sun = CRGB::Red;
+
+  CRGB background_color;
+
+  Serial.print(F("setting led to timer: "));
+
+  struct tm timeinfo;
+  getLocalTime( &timeinfo );
+
+  if (timeinfo.tm_year > 100 )
+  {
+    if ( isdaylight(timeinfo.tm_hour) ) {
+      background_color = daylight_color_back;
+      Serial.print(F("daylight, "));
+    } else {
+      background_color = night_color_back;
+      Serial.print(F("nightlight, "));
+    }
+    fill_solid( &(leds[i]), NUM_LEDS, background_color );
+
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_minute, color_sun);
+
+  } else {
+    Serial.print(F("TIME NOT SET, ERROR"));
+    fill_solid( &(leds[i]), NUM_LEDS, CRGB::Red );
+  }
+
+  FastLED.show();
+}
+
+ulong last_ledupdate = 0;
+
 void loop()
 {
   // Call the double reset detector loop method every so often,
@@ -994,15 +1056,20 @@ void loop()
   // put your main code here, to run repeatedly
   check_status();
 
-  ChangePalettePeriodically();
+  if (millis() - last_ledupdate > 5 * 1000 ) {
+    last_ledupdate = millis();
+    updateLedTime();
+  }
+
+  /*ChangePalettePeriodically();
     
   static uint8_t startIndex = 0;
-  startIndex = startIndex + 1; /* motion speed */
+  startIndex = startIndex + 1; 
   
   FillLEDsFromPaletteColors( startIndex);
   
   FastLED.show();
-  FastLED.delay(1000 / UPDATES_PER_SECOND);
+  FastLED.delay(1000 / UPDATES_PER_SECOND);*/
 
 }
 
