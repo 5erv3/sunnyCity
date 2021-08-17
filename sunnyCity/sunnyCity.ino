@@ -1031,13 +1031,13 @@ void updateLedTime() {
       background_color = night_color_back;
       Serial.print(F("nightlight, "));
     }
-    fill_solid( &(leds[i]), NUM_LEDS, background_color );
+    fill_solid( &(leds[0]), NUM_LEDS, background_color );
 
-    setSingleLED(timeinfo.tm_hour, timeinfo.tm_minute, color_sun);
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, color_sun);
 
   } else {
     Serial.print(F("TIME NOT SET, ERROR"));
-    fill_solid( &(leds[i]), NUM_LEDS, CRGB::Red );
+    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
   }
 
   FastLED.show();
