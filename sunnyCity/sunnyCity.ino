@@ -332,7 +332,7 @@ uint8_t connectMultiWiFi();
 #include <FastLED.h>
 
 #define LED_PIN     13
-#define NUM_LEDS    48
+#define NUM_LEDS    50
 #define BRIGHTNESS  255
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
@@ -1009,10 +1009,16 @@ void setSingleLED(int8_t h, int8_t m, CRGB color){
   float led_nb = NUM_LEDS;
 
   // calc leds per hour, use 13 because we have space before the 1 and after 12
-  float ledsperhour = led_nb / 13.0;
+  float ledsperhour = led_nb / 12.0;
   float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0);
   int lednb = (int) lednb_f;
-  leds[lednb] = color;
+  if (NUM_LEDS - lednb > 0){
+    leds[NUM_LEDS - lednb -1] = color;
+  } 
+  leds[NUM_LEDS - lednb] = color;
+  if (NUM_LEDS - lednb < NUM_LEDS) {
+    leds[NUM_LEDS - lednb +1] = color;
+  }
   Serial.print(F("hour/min= "));
   Serial.print(h);
   Serial.print(m);
@@ -1105,7 +1111,7 @@ void loop()
     for (int i=0; i< 24; i++){
       for (int j=0; j<60; j+=5){
         updateLedTime(i,j);
-        delay(1);
+        delay(100);
       }
     }
 #else
