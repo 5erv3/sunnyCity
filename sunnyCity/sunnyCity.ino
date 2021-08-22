@@ -37,6 +37,8 @@
    This example, originally relied on the Double Reset Detector library from https://github.com/datacute/DoubleResetDetector
    To support ESP32, use ESP_DoubleResetDetector library from //https://github.com/khoih-prog/ESP_DoubleResetDetector
  *****************************************************************************************************************************/
+
+#define TESTING 0
  
 #if !( defined(ESP8266) ||  defined(ESP32) )
   #error This code is intended to run on the ESP8266 or ESP32 platform! Please check your Tools->Board setting.
@@ -330,8 +332,8 @@ uint8_t connectMultiWiFi();
 #include <FastLED.h>
 
 #define LED_PIN     13
-#define NUM_LEDS    144
-#define BRIGHTNESS  64
+#define NUM_LEDS    48
+#define BRIGHTNESS  255
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 CRGB leds[NUM_LEDS];
@@ -682,6 +684,12 @@ void setup()
   // initialize the LED digital pin as an output.
   pinMode(PIN_LED, OUTPUT);
 
+  delay( 1000 );
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+  FastLED.setBrightness(  BRIGHTNESS );
+  fill_rainbow( &(leds[0]), NUM_LEDS, 222);
+  FastLED.show();
+
   Serial.begin(115200);
   while (!Serial);
 
@@ -976,12 +984,95 @@ void setup()
   else
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
 
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-  FastLED.setBrightness(  BRIGHTNESS );
-  
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
 }
+
+bool isdaylight(int8_t hour){
+  //todo: calculate based on sun 
+  if ( hour > 7 && hour < 22 ) {
+    return true;
+  }
+  return false;
+}
+
+void setSingleLED(int8_t h, int8_t m, CRGB color){
+  if (h >= 12){
+    h -= 12;
+  }
+  /*if (hour == 0){
+    hour = 12;
+  }*/
+
+  float hour_f = h;
+  float min_f = m;
+  float led_nb = NUM_LEDS;
+
+  // calc leds per hour, use 13 because we have space before the 1 and after 12
+  float ledsperhour = led_nb / 13.0;
+  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0);
+  int lednb = (int) lednb_f;
+  leds[lednb] = color;
+  Serial.print(F("hour/min= "));
+  Serial.print(h);
+  Serial.print(m);
+  Serial.print(F("single led nb_f = , "));
+  Serial.print(lednb_f);
+  Serial.print(F("single led nb = "));
+  Serial.println(lednb);
+
+}
+
+void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
+
+  CHSV daylight_color_back = CHSV( 170, 30, 70);
+  CHSV night_color_back = CHSV( 170, 80, 40);
+  CRGB color_sun = CRGB::Yellow;
+  CRGB color_moon = CRGB::Red;
+
+  CHSV background_color;
+  CRGB indicator_color;
+
+  bool daylight;
+
+  Serial.print(F("setting led to timer: "));
+
+  struct tm timeinfo;
+  getLocalTime( &timeinfo );
+
+  if (timeinfo.tm_year > 100 )
+  {
+#if TESTING
+    daylight = isdaylight(test_hour);
+#else
+    daylight = isdaylight(timeinfo.tm_hour);
+#endif
+    if ( daylight ) {
+      background_color = daylight_color_back;
+      indicator_color = color_sun;
+      Serial.print(F("daylight, "));
+    } else {
+      background_color = night_color_back;
+      indicator_color = color_moon;
+      Serial.print(F("nightlight, "));
+    }
+    fill_solid( &(leds[0]), NUM_LEDS, background_color );
+    FastLED.show();
+
+#if TESTING
+    setSingleLED(test_hour, test_min, indicator_color);
+#else
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color);
+#endif
+  } else {
+    Serial.print(F("TIME NOT SET, ERROR"));
+    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
+  }
+
+  FastLED.show();
+}
+
+ulong last_ledupdate = 0;
 
 void loop()
 {
@@ -993,16 +1084,39 @@ void loop()
 
   // put your main code here, to run repeatedly
   check_status();
+#if TESTING
+  static bool init_in_progress = false;
+#else
+  static bool init_in_progress = true;
+#endif
 
-  ChangePalettePeriodically();
+  if (init_in_progress){
+    init_in_progress = ChangePalettePeriodically();
     
-  static uint8_t startIndex = 0;
-  startIndex = startIndex + 1; /* motion speed */
+    static uint8_t startIndex = 0;
+    startIndex = startIndex + 1; 
+    
+    FillLEDsFromPaletteColors( startIndex);
+    
+    FastLED.show();
+    FastLED.delay(1000 / UPDATES_PER_SECOND);
+  } else {
+#if TESTING
+    for (int i=0; i< 24; i++){
+      for (int j=0; j<60; j+=5){
+        updateLedTime(i,j);
+        delay(1);
+      }
+    }
+#else
+    if (millis() - last_ledupdate > 5 * 1000 ) {
+      last_ledupdate = millis();
+      updateLedTime();
+    }
+#endif
+  }
+
   
-  FillLEDsFromPaletteColors( startIndex);
-  
-  FastLED.show();
-  FastLED.delay(1000 / UPDATES_PER_SECOND);
 
 }
 
@@ -1025,7 +1139,7 @@ void FillLEDsFromPaletteColors( uint8_t colorIndex)
 // Additionally, you can manually define your own color palettes, or you can write
 // code that creates color palettes on the fly.  All are shown here.
 
-void ChangePalettePeriodically()
+bool ChangePalettePeriodically()
 {
     uint8_t secondHand = (millis() / 1000) % 60;
     static uint8_t lastSecond = 99;
@@ -1042,8 +1156,9 @@ void ChangePalettePeriodically()
         if( secondHand == 40)  { currentPalette = CloudColors_p;           currentBlending = LINEARBLEND; }
         if( secondHand == 45)  { currentPalette = PartyColors_p;           currentBlending = LINEARBLEND; }
         if( secondHand == 50)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = NOBLEND;  }
-        if( secondHand == 55)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; }
+        if( secondHand == 55)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; return false;}
     }
+    return true;
 }
 
 // This function fills the palette with totally random colors.
