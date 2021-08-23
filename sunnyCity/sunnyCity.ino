@@ -996,7 +996,7 @@ bool isdaylight(int8_t hour){
   return false;
 }
 
-void setSingleLED(int8_t h, int8_t m, CRGB color){
+void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
   static int lastLedNb = 0;
   
   if (h >= 12){
@@ -1016,6 +1016,8 @@ void setSingleLED(int8_t h, int8_t m, CRGB color){
   int lednb = (int) lednb_f;
 
   if (lastLedNb != lednb){
+    fill_solid( &(leds[0]), NUM_LEDS, background_color );
+    
     lastLedNb = lednb;
     if (NUM_LEDS - lednb > 0){
       leds[NUM_LEDS - lednb -1] = color;
@@ -1024,13 +1026,16 @@ void setSingleLED(int8_t h, int8_t m, CRGB color){
     if (NUM_LEDS - lednb < NUM_LEDS) {
       leds[NUM_LEDS - lednb +1] = color;
     }
+
+    FastLED.show();
+    
     Serial.print(F("hour/min= "));
     Serial.print(h);
     Serial.print(m);
     Serial.print(F("single led nb_f = , "));
     Serial.print(lednb_f);
     Serial.print(F("single led nb = "));
-    Serial.println(lednb);
+    Serial.println(lednb);    
   }  
 }
 
@@ -1046,7 +1051,6 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
 
   bool daylight;
 
-  Serial.print(F("setting led to timer: "));
 
   struct tm timeinfo;
   getLocalTime( &timeinfo );
@@ -1061,26 +1065,21 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
     if ( daylight ) {
       background_color = daylight_color_back;
       indicator_color = color_sun;
-      Serial.print(F("daylight, "));
     } else {
       background_color = night_color_back;
       indicator_color = color_moon;
-      Serial.print(F("nightlight, "));
-    }
-    fill_solid( &(leds[0]), NUM_LEDS, background_color );
-    FastLED.show();
+    }    
 
 #if TESTING
-    setSingleLED(test_hour, test_min, indicator_color);
+    setSingleLED(test_hour, test_min, indicator_color, background_color);
 #else
-    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color);
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color, background_color);
 #endif
   } else {
     Serial.print(F("TIME NOT SET, ERROR"));
     fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
+    FastLED.show();
   }
-
-  FastLED.show();
 }
 
 ulong last_ledupdate = 0;
