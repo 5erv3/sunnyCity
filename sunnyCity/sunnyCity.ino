@@ -687,7 +687,8 @@ void setup()
   delay( 1000 );
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness(  BRIGHTNESS );
-  fill_rainbow( &(leds[0]), NUM_LEDS, 222);
+  FastLED.setBrightness(  BRIGHTNESS / 2 );
+  fill_solid( &(leds[0]), NUM_LEDS, CRGB::Green );
   FastLED.show();
 
   Serial.begin(115200);
@@ -851,6 +852,10 @@ void setup()
 
   if (initialConfig)
   {
+    FastLED.setBrightness(  BRIGHTNESS / 2 );
+    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Blue );
+    FastLED.show();
+    
     Serial.print(F("Starting configuration portal @ "));
     
 #if USE_CUSTOM_AP_IP    
@@ -984,6 +989,7 @@ void setup()
   else
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
 
+  FastLED.setBrightness(  BRIGHTNESS );
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
 }
