@@ -997,6 +997,8 @@ bool isdaylight(int8_t hour){
 }
 
 void setSingleLED(int8_t h, int8_t m, CRGB color){
+  static int lastLedNb = 0;
+  
   if (h >= 12){
     h -= 12;
   }
@@ -1010,23 +1012,26 @@ void setSingleLED(int8_t h, int8_t m, CRGB color){
 
   // calc leds per hour, use 13 because we have space before the 1 and after 12
   float ledsperhour = led_nb / 12.0;
-  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0);
+  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0) + 1.0;
   int lednb = (int) lednb_f;
-  if (NUM_LEDS - lednb > 0){
-    leds[NUM_LEDS - lednb -1] = color;
-  } 
-  leds[NUM_LEDS - lednb] = color;
-  if (NUM_LEDS - lednb < NUM_LEDS) {
-    leds[NUM_LEDS - lednb +1] = color;
-  }
-  Serial.print(F("hour/min= "));
-  Serial.print(h);
-  Serial.print(m);
-  Serial.print(F("single led nb_f = , "));
-  Serial.print(lednb_f);
-  Serial.print(F("single led nb = "));
-  Serial.println(lednb);
 
+  if (lastLedNb != lednb){
+    lastLedNb = lednb;
+    if (NUM_LEDS - lednb > 0){
+      leds[NUM_LEDS - lednb -1] = color;
+    } 
+    leds[NUM_LEDS - lednb] = color;
+    if (NUM_LEDS - lednb < NUM_LEDS) {
+      leds[NUM_LEDS - lednb +1] = color;
+    }
+    Serial.print(F("hour/min= "));
+    Serial.print(h);
+    Serial.print(m);
+    Serial.print(F("single led nb_f = , "));
+    Serial.print(lednb_f);
+    Serial.print(F("single led nb = "));
+    Serial.println(lednb);
+  }  
 }
 
 void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
