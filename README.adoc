@@ -1,0 +1,20 @@
+= Sunny City
+
+The most beautiful way to show the time!
+
+== Startup Manual
+
+On first boot, the led lights up green and the device will try to connect to your wifi to get the time.
+
+=== WiFi Configuration
+
+If you did not configure your wifi credentials yet, you have to put the device in configuration state.
+
+To set the device into configuration state, press the *RST* button on the backside, wait for 2-5 seconds and press it again. The LEDs will go to permanent blue. This will set the device in WiFi-Host mode, search for the WiFi network and connect with your smartphone or pc. The credentials are noted on the backside of the device.
+
+After connection, your PC/Smartphone should automatically open the configuration page, if not go to link:http://192.168.4.1/[] with your favourite browser.
+
+Press *CONFIGURATION*, select your wifi, enter your credentials and press save. After that the device will reboot and after ~ 30 seconds the LEDs go to rainbow mode and then show the time.
+
+If the LEDs stay blue or green for longer than 1 minute, please try the steps from the beginning again. Watch for capital letters in your wifi-password.
+
