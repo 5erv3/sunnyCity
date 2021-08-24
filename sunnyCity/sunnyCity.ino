@@ -709,16 +709,16 @@ void setup()
   xTaskCreatePinnedToCore(
     TaskWifiHandler
     ,  "TaskWifi"   // A name just for humans
-    ,  1024 * 6  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  1024 * 12  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
   xTaskCreatePinnedToCore(
     TaskLedHandler
     ,  "TaskLED"
-    ,  1024 * 4  // Stack size
+    ,  1024 * 12  // Stack size
     ,  NULL
     ,  1  // Priority
     ,  NULL 
@@ -934,6 +934,7 @@ const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
 void TaskLedHandler(void *pvParameters)
 {  
   static led_state last_state = LED_STATE_NONE;
+  static uint8_t startIndex = 0;
   
   (void) pvParameters;
   Serial.println("LED Task Started");
@@ -946,9 +947,23 @@ void TaskLedHandler(void *pvParameters)
 
   for (;;) {
     switch(led_statemachine_status){
-      case LED_STATE_INIT: break;
+      case LED_STATE_INIT: 
+        currentPalette = RainbowColors_p;
+        currentBlending = LINEARBLEND;        
+        startIndex = startIndex + 1;
+        FillLEDsFromPaletteColors(startIndex);
+        FastLED.show();
+        FastLED.delay(1000 / UPDATES_PER_SECOND);
+        break;
       case LED_STATE_INIT_ERR: break;
-      case LED_STATE_CONFIG: break;
+      case LED_STATE_CONFIG:
+        currentPalette = CloudColors_p;
+        currentBlending = LINEARBLEND;        
+        startIndex = startIndex + 1;
+        FillLEDsFromPaletteColors(startIndex);
+        FastLED.show();
+        FastLED.delay(1000 / UPDATES_PER_SECOND);
+        break;
       case LED_STATE_NORMAL:
         if (last_state != LED_STATE_NORMAL){
           last_state = LED_STATE_NORMAL;
@@ -960,7 +975,7 @@ void TaskLedHandler(void *pvParameters)
         #if TESTING
           static bool init_in_progress = false;
         #else
-          static bool init_in_progress = true;
+          static bool init_in_progress = false;
         #endif
         
           if (init_in_progress){
@@ -992,13 +1007,8 @@ void TaskLedHandler(void *pvParameters)
         break;
       default: break;
     }
-  
-  }
 
-  delay(200);
-
- 
-  
+  }  
 }
 
 
@@ -1163,9 +1173,7 @@ void TaskWifiHandler(void *pvParameters)
 
   if (initialConfig)
   {
-    FastLED.setBrightness(  BRIGHTNESS / 2 );
-    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Blue );
-    FastLED.show();
+    led_statemachine_status = LED_STATE_CONFIG;
     
     Serial.print(F("Starting configuration portal @ "));
     
@@ -1296,6 +1304,7 @@ void TaskWifiHandler(void *pvParameters)
   {
     Serial.print(F("connected. Local IP: "));
     Serial.println(WiFi.localIP());
+    led_statemachine_status = LED_STATE_NORMAL;
   }
   else
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
@@ -1303,5 +1312,6 @@ void TaskWifiHandler(void *pvParameters)
   for (;;) {
     drd->loop();
     check_status();
+    delay(1000);
   }
 }
