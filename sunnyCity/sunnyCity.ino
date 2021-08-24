@@ -820,9 +820,11 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
     daylight = isdaylight(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_year, timeinfo.tm_mon, timeinfo.tm_mday, timeinfo.tm_isdst);
 #endif
     if ( daylight ) {
+      FastLED.setBrightness(BRIGHTNESS);
       background_color = daylight_color_back;
       indicator_color = color_sun;
     } else {
+      FastLED.setBrightness(BRIGHTNESS / 3);
       background_color = night_color_back;
       indicator_color = color_moon;
     }    
