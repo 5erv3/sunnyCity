@@ -40,6 +40,11 @@
 
 #define TESTING 0
 
+#include <sunset.h>
+#define TIMEZONE    1
+#define LATITUDE    48.17407
+#define LONGITUDE   11.58409
+
 #if CONFIG_FREERTOS_UNICORE
 #define ARDUINO_RUNNING_CORE 0
 #else
@@ -361,6 +366,8 @@ typedef enum led_states_e {
 }led_state;
 
 led_state led_statemachine_status = LED_STATE_INIT;
+
+SunSet sun;
 
 ///////////////////////////////////////////
 // New in v1.4.0
@@ -704,6 +711,7 @@ void setup()
   while (!Serial);
 
   pinMode(PIN_LED, OUTPUT);
+  sun.setPosition(LATITUDE, LONGITUDE, TIMEZONE);
   
   // Now set up two tasks to run independently.
   xTaskCreatePinnedToCore(
@@ -727,11 +735,21 @@ void setup()
   // Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
 }
 
-bool isdaylight(int8_t hour){
-  //todo: calculate based on sun 
-  if ( hour > 7 && hour < 22 ) {
+bool isdaylight(int hour, int min, int year, int month, int day, int daylightsaving){
+  int minpastmidnight = hour * 60 + min;
+
+  sun.setCurrentDate(year+1900, month+1, day);
+  sun.setTZOffset(TIMEZONE+daylightsaving);
+  double sunrise = sun.calcSunrise();
+  double sunset = sun.calcSunset();
+
+  int sunset_in = sunset - minpastmidnight;
+  int sunrise_in = sunrise - minpastmidnight;
+
+  if (sunrise_in <= minpastmidnight && sunset_in >= minpastmidnight){
     return true;
-  }
+  } 
+
   return false;
 }
 
@@ -781,7 +799,7 @@ void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
 void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
 
   CHSV daylight_color_back = CHSV( 170, 30, 70);
-  CHSV night_color_back = CHSV( 170, 80, 40);
+  CHSV night_color_back = CHSV( 170, 80, 10);
   CRGB color_sun = CRGB::Yellow;
   CRGB color_moon = CRGB::Red;
 
@@ -799,7 +817,7 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
 #if TESTING
     daylight = isdaylight(test_hour);
 #else
-    daylight = isdaylight(timeinfo.tm_hour);
+    daylight = isdaylight(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_year, timeinfo.tm_mon, timeinfo.tm_mday, timeinfo.tm_isdst);
 #endif
     if ( daylight ) {
       background_color = daylight_color_back;
