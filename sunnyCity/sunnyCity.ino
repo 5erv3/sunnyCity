@@ -746,7 +746,7 @@ bool isdaylight(int hour, int min, int year, int month, int day, int daylightsav
   int sunset_in = sunset - minpastmidnight;
   int sunrise_in = sunrise - minpastmidnight;
 
-  if (sunrise_in <= minpastmidnight && sunset_in >= minpastmidnight){
+  if (sunset_in > 0 && sunrise_in < 0){
     return true;
   } 
 
