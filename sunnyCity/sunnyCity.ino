@@ -39,6 +39,17 @@
  *****************************************************************************************************************************/
 
 #define TESTING 0
+
+#include <sunset.h>
+#define TIMEZONE    1
+#define LATITUDE    48.17407
+#define LONGITUDE   11.58409
+
+#if CONFIG_FREERTOS_UNICORE
+#define ARDUINO_RUNNING_CORE 0
+#else
+#define ARDUINO_RUNNING_CORE 1
+#endif
  
 #if !( defined(ESP8266) ||  defined(ESP32) )
   #error This code is intended to run on the ESP8266 or ESP32 platform! Please check your Tools->Board setting.
@@ -345,6 +356,18 @@ TBlendType    currentBlending;
 
 extern CRGBPalette16 myRedWhiteBluePalette;
 extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
+
+typedef enum led_states_e {
+  LED_STATE_NONE = 0,
+  LED_STATE_INIT = 1,
+  LED_STATE_INIT_ERR,
+  LED_STATE_CONFIG,
+  LED_STATE_NORMAL
+}led_state;
+
+led_state led_statemachine_status = LED_STATE_INIT;
+
+SunSet sun;
 
 ///////////////////////////////////////////
 // New in v1.4.0
@@ -678,24 +701,342 @@ void saveConfigData()
   }
 }
 
+void TaskWifiHandler( void *pvParameters );
+void TaskLedHandler( void *pvParameters );
+
 void setup()
 {
-  // put your setup code here, to run once:
-  // initialize the LED digital pin as an output.
-  pinMode(PIN_LED, OUTPUT);
+  // initialize serial communication at 115200 bits per second:
+  Serial.begin(115200);
+  while (!Serial);
 
+  pinMode(PIN_LED, OUTPUT);
+  sun.setPosition(LATITUDE, LONGITUDE, TIMEZONE);
+  
+  // Now set up two tasks to run independently.
+  xTaskCreatePinnedToCore(
+    TaskWifiHandler
+    ,  "TaskWifi"   // A name just for humans
+    ,  1024 * 12  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL 
+    ,  ARDUINO_RUNNING_CORE);
+
+  xTaskCreatePinnedToCore(
+    TaskLedHandler
+    ,  "TaskLED"
+    ,  1024 * 12  // Stack size
+    ,  NULL
+    ,  1  // Priority
+    ,  NULL 
+    ,  ARDUINO_RUNNING_CORE);
+
+  // Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
+}
+
+bool isdaylight(int hour, int min, int year, int month, int day, int daylightsaving){
+  int minpastmidnight = hour * 60 + min;
+
+  sun.setCurrentDate(year+1900, month+1, day);
+  sun.setTZOffset(TIMEZONE+daylightsaving);
+  double sunrise = sun.calcSunrise();
+  double sunset = sun.calcSunset();
+
+  int sunset_in = sunset - minpastmidnight;
+  int sunrise_in = sunrise - minpastmidnight;
+
+  if (sunset_in > 0 && sunrise_in < 0){
+    return true;
+  } 
+
+  return false;
+}
+
+void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
+  static int lastLedNb = 0;
+  
+  if (h >= 12){
+    h -= 12;
+  }
+  /*if (hour == 0){
+    hour = 12;
+  }*/
+
+  float hour_f = h;
+  float min_f = m;
+  float led_nb = NUM_LEDS;
+
+  // calc leds per hour, use 13 because we have space before the 1 and after 12
+  float ledsperhour = led_nb / 12.0;
+  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0) + 1.0;
+  int lednb = (int) lednb_f;
+
+  if (lastLedNb != lednb){
+    fill_solid( &(leds[0]), NUM_LEDS, background_color );
+    
+    lastLedNb = lednb;
+    if (NUM_LEDS - lednb > 0){
+      leds[NUM_LEDS - lednb -1] = color;
+    } 
+    leds[NUM_LEDS - lednb] = color;
+    if (NUM_LEDS - lednb < NUM_LEDS) {
+      leds[NUM_LEDS - lednb +1] = color;
+    }
+
+    FastLED.show();
+    
+    Serial.print(F("hour/min= "));
+    Serial.print(h);
+    Serial.print(m);
+    Serial.print(F("single led nb_f = , "));
+    Serial.print(lednb_f);
+    Serial.print(F("single led nb = "));
+    Serial.println(lednb);    
+  }  
+}
+
+void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
+
+  CHSV daylight_color_back = CHSV( 170, 30, 70);
+  CHSV night_color_back = CHSV( 170, 80, 10);
+  CRGB color_sun = CRGB::Yellow;
+  CRGB color_moon = CRGB::Red;
+
+  CHSV background_color;
+  CRGB indicator_color;
+
+  bool daylight;
+
+
+  struct tm timeinfo;
+  getLocalTime( &timeinfo );
+
+  if (timeinfo.tm_year > 100 )
+  {
+#if TESTING
+    daylight = isdaylight(test_hour);
+#else
+    daylight = isdaylight(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_year, timeinfo.tm_mon, timeinfo.tm_mday, timeinfo.tm_isdst);
+#endif
+    if ( daylight ) {
+      FastLED.setBrightness(BRIGHTNESS);
+      background_color = daylight_color_back;
+      indicator_color = color_sun;
+    } else {
+      FastLED.setBrightness(BRIGHTNESS / 3);
+      background_color = night_color_back;
+      indicator_color = color_moon;
+    }    
+
+#if TESTING
+    setSingleLED(test_hour, test_min, indicator_color, background_color);
+#else
+    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color, background_color);
+#endif
+  } else {
+    Serial.print(F("TIME NOT SET, ERROR"));
+    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
+    FastLED.show();
+  }
+}
+
+ulong last_ledupdate = 0;
+
+void loop()
+{
+    // Empty. Things are done in Tasks.
+}
+
+void FillLEDsFromPaletteColors( uint8_t colorIndex)
+{
+    uint8_t brightness = 255;
+    
+    for( int i = 0; i < NUM_LEDS; ++i) {
+        leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
+        colorIndex += 3;
+    }
+}
+
+
+// There are several different palettes of colors demonstrated here.
+//
+// FastLED provides several 'preset' palettes: RainbowColors_p, RainbowStripeColors_p,
+// OceanColors_p, CloudColors_p, LavaColors_p, ForestColors_p, and PartyColors_p.
+//
+// Additionally, you can manually define your own color palettes, or you can write
+// code that creates color palettes on the fly.  All are shown here.
+
+bool ChangePalettePeriodically()
+{
+    static ulong starttime = millis(); 
+    uint8_t secondHand = ((millis() - starttime) / 1000) % 60;
+    static uint8_t lastSecond = 99;
+    
+    if( lastSecond != secondHand) {
+        lastSecond = secondHand;
+        if( secondHand ==  0)  { currentPalette = RainbowColors_p;         currentBlending = LINEARBLEND; }
+        if( secondHand == 10)  { currentPalette = RainbowStripeColors_p;   currentBlending = LINEARBLEND; }
+        if( secondHand == 20)  { SetupTotallyRandomPalette();              currentBlending = LINEARBLEND; }
+        if( secondHand == 25)  { SetupBlackAndWhiteStripedPalette();       currentBlending = LINEARBLEND; }
+        if( secondHand == 30)  { currentPalette = CloudColors_p;           currentBlending = LINEARBLEND; }
+        if( secondHand == 35)  { currentPalette = PartyColors_p;           currentBlending = LINEARBLEND; }
+        if( secondHand == 40)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; return false;}
+    }
+    return true;
+}
+
+// This function fills the palette with totally random colors.
+void SetupTotallyRandomPalette()
+{
+    for( int i = 0; i < 16; ++i) {
+        currentPalette[i] = CHSV( random8(), 255, random8());
+    }
+}
+
+// This function sets up a palette of black and white stripes,
+// using code.  Since the palette is effectively an array of
+// sixteen CRGB colors, the various fill_* functions can be used
+// to set them up.
+void SetupBlackAndWhiteStripedPalette()
+{
+    // 'black out' all 16 palette entries...
+    fill_solid( currentPalette, 16, CRGB::Black);
+    // and set every fourth one to white.
+    currentPalette[0] = CRGB::White;
+    currentPalette[4] = CRGB::White;
+    currentPalette[8] = CRGB::White;
+    currentPalette[12] = CRGB::White;
+    
+}
+
+// This function sets up a palette of purple and green stripes.
+void SetupPurpleAndGreenPalette()
+{
+    CRGB purple = CHSV( HUE_PURPLE, 255, 255);
+    CRGB green  = CHSV( HUE_GREEN, 255, 255);
+    CRGB black  = CRGB::Black;
+    
+    currentPalette = CRGBPalette16(
+                                   green,  green,  black,  black,
+                                   purple, purple, black,  black,
+                                   green,  green,  black,  black,
+                                   purple, purple, black,  black );
+}
+
+
+// This example shows how to set up a static color palette
+// which is stored in PROGMEM (flash), which is almost always more
+// plentiful than RAM.  A static PROGMEM palette like this
+// takes up 64 bytes of flash.
+const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
+{
+    CRGB::Red,
+    CRGB::Gray, // 'white' is too bright compared to red and blue
+    CRGB::Blue,
+    CRGB::Black,
+    
+    CRGB::Red,
+    CRGB::Gray,
+    CRGB::Blue,
+    CRGB::Black,
+    
+    CRGB::Red,
+    CRGB::Red,
+    CRGB::Gray,
+    CRGB::Gray,
+    CRGB::Blue,
+    CRGB::Blue,
+    CRGB::Black,
+    CRGB::Black
+};
+
+void TaskLedHandler(void *pvParameters)
+{  
+  static led_state last_state = LED_STATE_NONE;
+  static uint8_t startIndex = 0;
+  
+  (void) pvParameters;
+  Serial.println("LED Task Started");
+  
   delay( 1000 );
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-  FastLED.setBrightness(  BRIGHTNESS );
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );  
   FastLED.setBrightness(  BRIGHTNESS / 2 );
   fill_solid( &(leds[0]), NUM_LEDS, CRGB::Green );
   FastLED.show();
 
-  Serial.begin(115200);
-  while (!Serial);
+  for (;;) {
+    switch(led_statemachine_status){
+      case LED_STATE_INIT: 
+        currentPalette = RainbowColors_p;
+        currentBlending = LINEARBLEND;        
+        startIndex = startIndex + 1;
+        FillLEDsFromPaletteColors(startIndex);
+        FastLED.show();
+        FastLED.delay(1000 / UPDATES_PER_SECOND);
+        break;
+      case LED_STATE_INIT_ERR: break;
+      case LED_STATE_CONFIG:
+        currentPalette = CloudColors_p;
+        currentBlending = LINEARBLEND;        
+        startIndex = startIndex + 1;
+        FillLEDsFromPaletteColors(startIndex);
+        FastLED.show();
+        FastLED.delay(1000 / UPDATES_PER_SECOND);
+        break;
+      case LED_STATE_NORMAL:
+        if (last_state != LED_STATE_NORMAL){
+          last_state = LED_STATE_NORMAL;
+          FastLED.setBrightness(BRIGHTNESS);
+          currentPalette = RainbowColors_p;
+          currentBlending = LINEARBLEND;
+        }        
 
-  delay(200);
+        #if TESTING
+          static bool init_in_progress = false;
+        #else
+          static bool init_in_progress = false;
+        #endif
+        
+          if (init_in_progress){
+            init_in_progress = ChangePalettePeriodically();
+            
+            static uint8_t startIndex = 0;
+            startIndex = startIndex + 1; 
+            
+            FillLEDsFromPaletteColors( startIndex);
+            
+            FastLED.show();
+            FastLED.delay(1000 / UPDATES_PER_SECOND);
+          } else {
+        #if TESTING
+            for (int i=0; i< 24; i++){
+              for (int j=0; j<60; j+=5){
+                updateLedTime(i,j);
+                delay(100);
+              }
+            }
+        #else
+            if (millis() - last_ledupdate > 5 * 1000 ) {
+              last_ledupdate = millis();
+              updateLedTime();
+            }
+        #endif
+          }
+  
+        break;
+      default: break;
+    }
 
+  }  
+}
+
+
+void TaskWifiHandler(void *pvParameters)
+{
+  (void) pvParameters;
+  Serial.println("Wifi Task Started");
+  
   Serial.print(F("\nStarting ConfigOnDoubleReset with DoubleResetDetect using ")); Serial.print(FS_Name);
   Serial.print(F(" on ")); Serial.println(ARDUINO_BOARD);
   Serial.println(ESP_WIFIMANAGER_VERSION);
@@ -852,9 +1193,7 @@ void setup()
 
   if (initialConfig)
   {
-    FastLED.setBrightness(  BRIGHTNESS / 2 );
-    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Blue );
-    FastLED.show();
+    led_statemachine_status = LED_STATE_CONFIG;
     
     Serial.print(F("Starting configuration portal @ "));
     
@@ -985,256 +1324,14 @@ void setup()
   {
     Serial.print(F("connected. Local IP: "));
     Serial.println(WiFi.localIP());
+    led_statemachine_status = LED_STATE_NORMAL;
   }
   else
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
 
-  FastLED.setBrightness(  BRIGHTNESS );
-  currentPalette = RainbowColors_p;
-  currentBlending = LINEARBLEND;
-}
-
-bool isdaylight(int8_t hour){
-  //todo: calculate based on sun 
-  if ( hour > 7 && hour < 22 ) {
-    return true;
-  }
-  return false;
-}
-
-void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
-  static int lastLedNb = 0;
-  
-  if (h >= 12){
-    h -= 12;
-  }
-  /*if (hour == 0){
-    hour = 12;
-  }*/
-
-  float hour_f = h;
-  float min_f = m;
-  float led_nb = NUM_LEDS;
-
-  // calc leds per hour, use 13 because we have space before the 1 and after 12
-  float ledsperhour = led_nb / 12.0;
-  float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0) + 1.0;
-  int lednb = (int) lednb_f;
-
-  if (lastLedNb != lednb){
-    fill_solid( &(leds[0]), NUM_LEDS, background_color );
-    
-    lastLedNb = lednb;
-    if (NUM_LEDS - lednb > 0){
-      leds[NUM_LEDS - lednb -1] = color;
-    } 
-    leds[NUM_LEDS - lednb] = color;
-    if (NUM_LEDS - lednb < NUM_LEDS) {
-      leds[NUM_LEDS - lednb +1] = color;
-    }
-
-    FastLED.show();
-    
-    Serial.print(F("hour/min= "));
-    Serial.print(h);
-    Serial.print(m);
-    Serial.print(F("single led nb_f = , "));
-    Serial.print(lednb_f);
-    Serial.print(F("single led nb = "));
-    Serial.println(lednb);    
-  }  
-}
-
-void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
-
-  CHSV daylight_color_back = CHSV( 170, 30, 70);
-  CHSV night_color_back = CHSV( 170, 80, 40);
-  CRGB color_sun = CRGB::Yellow;
-  CRGB color_moon = CRGB::Red;
-
-  CHSV background_color;
-  CRGB indicator_color;
-
-  bool daylight;
-
-
-  struct tm timeinfo;
-  getLocalTime( &timeinfo );
-
-  if (timeinfo.tm_year > 100 )
-  {
-#if TESTING
-    daylight = isdaylight(test_hour);
-#else
-    daylight = isdaylight(timeinfo.tm_hour);
-#endif
-    if ( daylight ) {
-      background_color = daylight_color_back;
-      indicator_color = color_sun;
-    } else {
-      background_color = night_color_back;
-      indicator_color = color_moon;
-    }    
-
-#if TESTING
-    setSingleLED(test_hour, test_min, indicator_color, background_color);
-#else
-    setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color, background_color);
-#endif
-  } else {
-    Serial.print(F("TIME NOT SET, ERROR"));
-    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
-    FastLED.show();
+  for (;;) {
+    drd->loop();
+    check_status();
+    delay(1000);
   }
 }
-
-ulong last_ledupdate = 0;
-
-void loop()
-{
-  // Call the double reset detector loop method every so often,
-  // so that it can recognise when the timeout expires.
-  // You can also call drd.stop() when you wish to no longer
-  // consider the next reset as a double reset.
-  drd->loop();
-
-  // put your main code here, to run repeatedly
-  check_status();
-#if TESTING
-  static bool init_in_progress = false;
-#else
-  static bool init_in_progress = true;
-#endif
-
-  if (init_in_progress){
-    init_in_progress = ChangePalettePeriodically();
-    
-    static uint8_t startIndex = 0;
-    startIndex = startIndex + 1; 
-    
-    FillLEDsFromPaletteColors( startIndex);
-    
-    FastLED.show();
-    FastLED.delay(1000 / UPDATES_PER_SECOND);
-  } else {
-#if TESTING
-    for (int i=0; i< 24; i++){
-      for (int j=0; j<60; j+=5){
-        updateLedTime(i,j);
-        delay(100);
-      }
-    }
-#else
-    if (millis() - last_ledupdate > 5 * 1000 ) {
-      last_ledupdate = millis();
-      updateLedTime();
-    }
-#endif
-  }
-
-  
-
-}
-
-void FillLEDsFromPaletteColors( uint8_t colorIndex)
-{
-    uint8_t brightness = 255;
-    
-    for( int i = 0; i < NUM_LEDS; ++i) {
-        leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
-        colorIndex += 3;
-    }
-}
-
-
-// There are several different palettes of colors demonstrated here.
-//
-// FastLED provides several 'preset' palettes: RainbowColors_p, RainbowStripeColors_p,
-// OceanColors_p, CloudColors_p, LavaColors_p, ForestColors_p, and PartyColors_p.
-//
-// Additionally, you can manually define your own color palettes, or you can write
-// code that creates color palettes on the fly.  All are shown here.
-
-bool ChangePalettePeriodically()
-{
-    static ulong starttime = millis(); 
-    uint8_t secondHand = ((millis() - starttime) / 1000) % 60;
-    static uint8_t lastSecond = 99;
-    
-    if( lastSecond != secondHand) {
-        lastSecond = secondHand;
-        if( secondHand ==  0)  { currentPalette = RainbowColors_p;         currentBlending = LINEARBLEND; }
-        if( secondHand == 10)  { currentPalette = RainbowStripeColors_p;   currentBlending = LINEARBLEND; }
-        if( secondHand == 20)  { SetupTotallyRandomPalette();              currentBlending = LINEARBLEND; }
-        if( secondHand == 25)  { SetupBlackAndWhiteStripedPalette();       currentBlending = LINEARBLEND; }
-        if( secondHand == 30)  { currentPalette = CloudColors_p;           currentBlending = LINEARBLEND; }
-        if( secondHand == 35)  { currentPalette = PartyColors_p;           currentBlending = LINEARBLEND; }
-        if( secondHand == 40)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; return false;}
-    }
-    return true;
-}
-
-// This function fills the palette with totally random colors.
-void SetupTotallyRandomPalette()
-{
-    for( int i = 0; i < 16; ++i) {
-        currentPalette[i] = CHSV( random8(), 255, random8());
-    }
-}
-
-// This function sets up a palette of black and white stripes,
-// using code.  Since the palette is effectively an array of
-// sixteen CRGB colors, the various fill_* functions can be used
-// to set them up.
-void SetupBlackAndWhiteStripedPalette()
-{
-    // 'black out' all 16 palette entries...
-    fill_solid( currentPalette, 16, CRGB::Black);
-    // and set every fourth one to white.
-    currentPalette[0] = CRGB::White;
-    currentPalette[4] = CRGB::White;
-    currentPalette[8] = CRGB::White;
-    currentPalette[12] = CRGB::White;
-    
-}
-
-// This function sets up a palette of purple and green stripes.
-void SetupPurpleAndGreenPalette()
-{
-    CRGB purple = CHSV( HUE_PURPLE, 255, 255);
-    CRGB green  = CHSV( HUE_GREEN, 255, 255);
-    CRGB black  = CRGB::Black;
-    
-    currentPalette = CRGBPalette16(
-                                   green,  green,  black,  black,
-                                   purple, purple, black,  black,
-                                   green,  green,  black,  black,
-                                   purple, purple, black,  black );
-}
-
-
-// This example shows how to set up a static color palette
-// which is stored in PROGMEM (flash), which is almost always more
-// plentiful than RAM.  A static PROGMEM palette like this
-// takes up 64 bytes of flash.
-const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
-{
-    CRGB::Red,
-    CRGB::Gray, // 'white' is too bright compared to red and blue
-    CRGB::Blue,
-    CRGB::Black,
-    
-    CRGB::Red,
-    CRGB::Gray,
-    CRGB::Blue,
-    CRGB::Black,
-    
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Gray,
-    CRGB::Gray,
-    CRGB::Blue,
-    CRGB::Blue,
-    CRGB::Black,
-    CRGB::Black
-};
