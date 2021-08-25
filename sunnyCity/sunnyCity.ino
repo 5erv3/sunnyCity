@@ -369,6 +369,12 @@ led_state led_statemachine_status = LED_STATE_INIT;
 
 SunSet sun;
 
+typedef enum sunstate_e {
+  SUNSTATE_SUN_UP = 0,
+  SUNSTATE_SUN_DOWN_BEFORE_MIDNIGHT,
+  SUNSTATE_SUN_DOWN_AFTER_MIDNIGHT
+}sunstate;
+
 ///////////////////////////////////////////
 // New in v1.4.0
 /******************************************
@@ -735,7 +741,7 @@ void setup()
   // Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
 }
 
-bool isdaylight(int hour, int min, int year, int month, int day, int daylightsaving){
+sunstate getSunState(int hour, int min, int year, int month, int day, int daylightsaving){
   int minpastmidnight = hour * 60 + min;
 
   sun.setCurrentDate(year+1900, month+1, day);
@@ -747,10 +753,14 @@ bool isdaylight(int hour, int min, int year, int month, int day, int daylightsav
   int sunrise_in = sunrise - minpastmidnight;
 
   if (sunset_in > 0 && sunrise_in < 0){
-    return true;
+    return SUNSTATE_SUN_UP;
   } 
 
-  return false;
+  if (sunrise_in > 0){
+    return SUNSTATE_SUN_DOWN_AFTER_MIDNIGHT;
+  }
+
+  return SUNSTATE_SUN_DOWN_BEFORE_MIDNIGHT;
 }
 
 void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
@@ -759,9 +769,6 @@ void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
   if (h >= 12){
     h -= 12;
   }
-  /*if (hour == 0){
-    hour = 12;
-  }*/
 
   float hour_f = h;
   float min_f = m;
@@ -798,15 +805,17 @@ void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
 
 void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
 
-  CHSV daylight_color_back = CHSV( 170, 30, 70);
-  CHSV night_color_back = CHSV( 170, 80, 10);
+  CHSV daylight_color_back = CHSV( 0, 0, 0);
+  CHSV night_color_back = CHSV( HUE_PURPLE, 80, 20);
+  CHSV deep_night_color_back = CHSV( 0, 0, 0);
   CRGB color_sun = CRGB::Yellow;
-  CRGB color_moon = CRGB::Red;
+  CRGB color_moon = CRGB::Orange;
+  CRGB color_deep_moon = CRGB(10,53,40);
 
   CHSV background_color;
   CRGB indicator_color;
 
-  bool daylight;
+  sunstate sun_state;
 
 
   struct tm timeinfo;
@@ -815,19 +824,24 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
   if (timeinfo.tm_year > 100 )
   {
 #if TESTING
-    daylight = isdaylight(test_hour);
+    sun_state = getSunState(test_hour, test_min, 2021, 11, 21, 0);
 #else
-    daylight = isdaylight(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_year, timeinfo.tm_mon, timeinfo.tm_mday, timeinfo.tm_isdst);
+    sun_state = getSunState(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_year, timeinfo.tm_mon, timeinfo.tm_mday, timeinfo.tm_isdst);
 #endif
-    if ( daylight ) {
-      FastLED.setBrightness(BRIGHTNESS);
-      background_color = daylight_color_back;
-      indicator_color = color_sun;
-    } else {
-      FastLED.setBrightness(BRIGHTNESS / 3);
-      background_color = night_color_back;
-      indicator_color = color_moon;
-    }    
+    switch (sun_state) {
+      case SUNSTATE_SUN_UP:
+        background_color = daylight_color_back;
+        indicator_color = color_sun;
+      break;
+      case SUNSTATE_SUN_DOWN_BEFORE_MIDNIGHT:
+        background_color = night_color_back;
+        indicator_color = color_moon;
+      break;
+      case SUNSTATE_SUN_DOWN_AFTER_MIDNIGHT:
+        background_color = deep_night_color_back;
+        indicator_color = color_deep_moon;
+      break;
+    }
 
 #if TESTING
     setSingleLED(test_hour, test_min, indicator_color, background_color);
@@ -990,42 +1004,24 @@ void TaskLedHandler(void *pvParameters)
           FastLED.setBrightness(BRIGHTNESS);
           currentPalette = RainbowColors_p;
           currentBlending = LINEARBLEND;
-        }        
-
+        }  
         #if TESTING
-          static bool init_in_progress = false;
-        #else
-          static bool init_in_progress = false;
-        #endif
-        
-          if (init_in_progress){
-            init_in_progress = ChangePalettePeriodically();
-            
-            static uint8_t startIndex = 0;
-            startIndex = startIndex + 1; 
-            
-            FillLEDsFromPaletteColors( startIndex);
-            
-            FastLED.show();
-            FastLED.delay(1000 / UPDATES_PER_SECOND);
-          } else {
-        #if TESTING
-            for (int i=0; i< 24; i++){
-              for (int j=0; j<60; j+=5){
-                updateLedTime(i,j);
-                delay(100);
-              }
-            }
-        #else
-            if (millis() - last_ledupdate > 5 * 1000 ) {
-              last_ledupdate = millis();
-              updateLedTime();
-            }
-        #endif
+        for (int i=0; i< 24; i++){
+          for (int j=0; j<60; j+=5){
+            updateLedTime(i,j);
+            delay(50);
           }
-  
+        }
+        #else
+        if (millis() - last_ledupdate > 5 * 1000 ) {
+          last_ledupdate = millis();
+          updateLedTime();
+        }
+        #endif  
         break;
-      default: break;
+      default: 
+        delay(100);
+        break;
     }
 
   }  
