@@ -19,6 +19,12 @@ image::img/sideview1.jpg[]
 .Detail view from bottom side
 image::img/sideview2.jpg[]
 
+== Time Display
+
+The time is displayed according to the numbers on the top of the mountains. Starting point is on the left side with 12 AM/PM, and it ends on the right with 11:59 AM/PM.
+
+Between sunrise and sunset, only a yellow sun is displayed. Between sunset and midnight, an orange moon with ambient background is shown. From midnight to sunrise a light blue moon shows up.
+
 == Startup Manual
 
 On first boot, the led lights up in rainbow colors and the device will try to connect to your Wi-Fi to get the current time and timezone to calculate the sunset and sunrise times.
