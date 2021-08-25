@@ -43,6 +43,14 @@ Press *CONFIGURATION*, select your Wi-Fi, enter the credentials for *YOUR*  Wi-F
 
 If the LEDs stay in rainbow- or blue-white mode for longer than 1 minute, please try the steps from the beginning again. Watch for capital letters in your Wi-Fi-password.
 
+== Examples
+
+.One day starting from 12 AM.
+video::img/daycycle.mp4[]
+
+.Init sequence
+video::img/initseq.mp4[]
+
 == Questions, Bugs, Kudos
 
 Please visit the link:https://github.com/5erv3/sunnyCity[github page] for code, details and questions.
