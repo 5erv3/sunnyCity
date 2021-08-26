@@ -51,6 +51,14 @@ video::img/daycycle.mp4[]
 .Init sequence
 video::img/initseq.mp4[]
 
+== LED States
+
+* Everything normal: <<_time_display>>
+* Initializing: Rainbow colors
+* No Wi-Fi connection: Red-Lava
+* Wi-Fi connected, but no NTP sync: Green
+* Wi-Fi configuration running: Blue-white
+
 == Questions, Bugs, Kudos
 
 Please visit the link:https://github.com/5erv3/sunnyCity[github page] for code, details and questions.

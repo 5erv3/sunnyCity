@@ -362,7 +362,10 @@ typedef enum led_states_e {
   LED_STATE_INIT = 1,
   LED_STATE_INIT_ERR,
   LED_STATE_CONFIG,
-  LED_STATE_NORMAL
+  LED_STATE_NOCONNECTION,
+  LED_STATE_WIFI_OK_TIME_WAITING,
+  LED_STATE_NORMAL,
+  LED_STATE_OFF
 }led_state;
 
 led_state led_statemachine_status = LED_STATE_INIT;
@@ -444,6 +447,7 @@ void configWiFi(WiFi_STA_IPConfig in_WM_STA_IPconfig)
 
 uint8_t connectMultiWiFi()
 {
+  static int connectioncounter = 0;
 #if ESP32
   // For ESP32, this better be 0 to shorten the connect time.
   // For ESP32-S2/C3, must be > 500
@@ -512,19 +516,26 @@ uint8_t connectMultiWiFi()
     LOGERROR1(F("WiFi connected after time: "), i);
     LOGERROR3(F("SSID:"), WiFi.SSID(), F(",RSSI="), WiFi.RSSI());
     LOGERROR3(F("Channel:"), WiFi.channel(), F(",IP address:"), WiFi.localIP() );
+    connectioncounter = 0;
   }
   else
   {
+    connectioncounter++;
     LOGERROR(F("WiFi not connected"));
 
     // To avoid unnecessary DRD
     drd->loop();
-  
+
+    if (connectioncounter > 20){
+      Serial.println("No connection for a long time, restarting ESP in 2s & switching off LED.");
+      led_statemachine_status = LED_STATE_OFF;
+      delay(2000);
 #if ESP8266      
-    ESP.reset();
+      ESP.reset();
 #else
-    ESP.restart();
-#endif  
+      ESP.restart();
+#endif 
+    } 
   }
 
   return status;
@@ -587,10 +598,15 @@ void heartBeatPrint()
 
 void check_WiFi()
 {
+  uint8_t status;
   if ( (WiFi.status() != WL_CONNECTED) )
   {
+    led_statemachine_status = LED_STATE_NOCONNECTION;
     Serial.println(F("\nWiFi lost. Call connectMultiWiFi in loop"));
-    connectMultiWiFi();
+    status = connectMultiWiFi();
+  }
+  if (status == WL_CONNECTED){
+    led_statemachine_status = LED_STATE_NORMAL;
   }
 }
 
@@ -849,9 +865,8 @@ void updateLedTime(int8_t test_hour=-1, int8_t test_min=-1) {
     setSingleLED(timeinfo.tm_hour, timeinfo.tm_min, indicator_color, background_color);
 #endif
   } else {
-    Serial.print(F("TIME NOT SET, ERROR"));
-    fill_solid( &(leds[0]), NUM_LEDS, CRGB::Red );
-    FastLED.show();
+    Serial.print(F("ERROR: Time not yet set"));
+    led_statemachine_status = LED_STATE_WIFI_OK_TIME_WAITING;
   }
 }
 
@@ -968,20 +983,32 @@ const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
 void TaskLedHandler(void *pvParameters)
 {  
   static led_state last_state = LED_STATE_NONE;
+  static led_state last_state_report = LED_STATE_NONE;
   static uint8_t startIndex = 0;
   
   (void) pvParameters;
   Serial.println("LED Task Started");
   
-  delay( 1000 );
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );  
   FastLED.setBrightness(  BRIGHTNESS / 2 );
-  fill_solid( &(leds[0]), NUM_LEDS, CRGB::Green );
+  fill_solid( &(leds[0]), NUM_LEDS, CRGB::Black );
   FastLED.show();
 
+  delay(1000);
+
   for (;;) {
+    if (last_state_report != led_statemachine_status){      
+      Serial.print("LED state change from ");
+      Serial.print(last_state_report);
+      Serial.print(" to ");
+      Serial.println(led_statemachine_status);
+      last_state_report = led_statemachine_status;
+      startIndex = 0;
+    }
+    
     switch(led_statemachine_status){
       case LED_STATE_INIT: 
+        FastLED.setBrightness(BRIGHTNESS/2);
         currentPalette = RainbowColors_p;
         currentBlending = LINEARBLEND;        
         startIndex = startIndex + 1;
@@ -989,15 +1016,42 @@ void TaskLedHandler(void *pvParameters)
         FastLED.show();
         FastLED.delay(1000 / UPDATES_PER_SECOND);
         break;
-      case LED_STATE_INIT_ERR: break;
+        
+      case LED_STATE_INIT_ERR:
+      case LED_STATE_NOCONNECTION:
+        FastLED.setBrightness(BRIGHTNESS/2);
+        currentPalette = LavaColors_p;
+        currentBlending = LINEARBLEND;        
+        startIndex = startIndex + 1;
+        FillLEDsFromPaletteColors(startIndex);
+        FastLED.show();
+        FastLED.delay(1000 / UPDATES_PER_SECOND);
+      break;
+      
       case LED_STATE_CONFIG:
+        FastLED.setBrightness(BRIGHTNESS/2);
         currentPalette = CloudColors_p;
         currentBlending = LINEARBLEND;        
         startIndex = startIndex + 1;
         FillLEDsFromPaletteColors(startIndex);
         FastLED.show();
         FastLED.delay(1000 / UPDATES_PER_SECOND);
-        break;
+      break;
+        
+      case LED_STATE_WIFI_OK_TIME_WAITING:
+        FastLED.setBrightness(BRIGHTNESS/2);
+        fill_solid( &(leds[0]), NUM_LEDS, CRGB::Green);
+        FastLED.show();
+        
+        struct tm timeinfo;
+        getLocalTime( &timeinfo );      
+        if (timeinfo.tm_year > 100 )
+        {
+           led_statemachine_status = LED_STATE_NORMAL;
+           last_ledupdate = 0;
+        }        
+      break;        
+        
       case LED_STATE_NORMAL:
         if (last_state != LED_STATE_NORMAL){
           last_state = LED_STATE_NORMAL;
@@ -1018,12 +1072,18 @@ void TaskLedHandler(void *pvParameters)
           updateLedTime();
         }
         #endif  
-        break;
+      break;
+        
+      case LED_STATE_OFF:
+        fill_solid( &(leds[0]), NUM_LEDS, CRGB::Black);
+        FastLED.show();
+        delay(100);
+      break;
+        
       default: 
         delay(100);
-        break;
+      break;
     }
-
   }  
 }
 
@@ -1322,8 +1382,10 @@ void TaskWifiHandler(void *pvParameters)
     Serial.println(WiFi.localIP());
     led_statemachine_status = LED_STATE_NORMAL;
   }
-  else
+  else {
+    led_statemachine_status = LED_STATE_NOCONNECTION;
     Serial.println(ESP_wifiManager.getStatus(WiFi.status()));
+  }
 
   for (;;) {
     drd->loop();
