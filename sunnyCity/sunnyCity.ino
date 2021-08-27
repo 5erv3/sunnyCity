@@ -768,6 +768,13 @@ sunstate getSunState(int hour, int min, int year, int month, int day, int daylig
   int sunset_in = sunset - minpastmidnight;
   int sunrise_in = sunrise - minpastmidnight;
 
+  Serial.print(F("sunrise in "));
+  Serial.print(sunrise_in);
+  Serial.print(F(" min, sunset in "));
+  Serial.print(sunset_in);
+  Serial.print(F(" ,minpastmidnight: "));
+  Serial.println(minpastmidnight);   
+
   if (sunset_in > 0 && sunrise_in < 0){
     return SUNSTATE_SUN_UP;
   } 
@@ -781,6 +788,7 @@ sunstate getSunState(int hour, int min, int year, int month, int day, int daylig
 
 void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
   static int lastLedNb = 0;
+  static CRGB lastcolor = CRGB::Black;
   
   if (h >= 12){
     h -= 12;
@@ -795,10 +803,11 @@ void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
   float lednb_f = (hour_f * ledsperhour) +  ((min_f * ledsperhour) / 60.0) + 1.0;
   int lednb = (int) lednb_f;
 
-  if (lastLedNb != lednb){
+  if (lastLedNb != lednb || lastcolor != color){
     fill_solid( &(leds[0]), NUM_LEDS, background_color );
     
     lastLedNb = lednb;
+    lastcolor = color;
     if (NUM_LEDS - lednb > 0){
       leds[NUM_LEDS - lednb -1] = color;
     } 
@@ -812,9 +821,9 @@ void setSingleLED(int8_t h, int8_t m, CRGB color, CHSV background_color){
     Serial.print(F("hour/min= "));
     Serial.print(h);
     Serial.print(m);
-    Serial.print(F("single led nb_f = , "));
+    Serial.print(F(" single led nb_f = , "));
     Serial.print(lednb_f);
-    Serial.print(F("single led nb = "));
+    Serial.print(F(" single led nb = "));
     Serial.println(lednb);    
   }  
 }
@@ -1058,7 +1067,8 @@ void TaskLedHandler(void *pvParameters)
           FastLED.setBrightness(BRIGHTNESS);
           currentPalette = RainbowColors_p;
           currentBlending = LINEARBLEND;
-        }  
+        } 
+        FastLED.setBrightness(BRIGHTNESS); 
         #if TESTING
         for (int i=0; i< 24; i++){
           for (int j=0; j<60; j+=5){
