@@ -999,7 +999,7 @@ void TaskLedHandler(void *pvParameters)
   Serial.println("LED Task Started");
   
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );  
-  FastLED.setBrightness(  BRIGHTNESS / 2 );
+  FastLED.setBrightness(  BRIGHTNESS / 3 );
   fill_solid( &(leds[0]), NUM_LEDS, CRGB::Black );
   FastLED.show();
 
@@ -1017,7 +1017,7 @@ void TaskLedHandler(void *pvParameters)
     
     switch(led_statemachine_status){
       case LED_STATE_INIT: 
-        FastLED.setBrightness(BRIGHTNESS/2);
+        FastLED.setBrightness(BRIGHTNESS/3);
         currentPalette = RainbowColors_p;
         currentBlending = LINEARBLEND;        
         startIndex = startIndex + 1;
@@ -1028,7 +1028,7 @@ void TaskLedHandler(void *pvParameters)
         
       case LED_STATE_INIT_ERR:
       case LED_STATE_NOCONNECTION:
-        FastLED.setBrightness(BRIGHTNESS/2);
+        FastLED.setBrightness(BRIGHTNESS/3);
         currentPalette = LavaColors_p;
         currentBlending = LINEARBLEND;        
         startIndex = startIndex + 1;
@@ -1038,7 +1038,7 @@ void TaskLedHandler(void *pvParameters)
       break;
       
       case LED_STATE_CONFIG:
-        FastLED.setBrightness(BRIGHTNESS/2);
+        FastLED.setBrightness(BRIGHTNESS/3);
         currentPalette = CloudColors_p;
         currentBlending = LINEARBLEND;        
         startIndex = startIndex + 1;
@@ -1048,7 +1048,7 @@ void TaskLedHandler(void *pvParameters)
       break;
         
       case LED_STATE_WIFI_OK_TIME_WAITING:
-        FastLED.setBrightness(BRIGHTNESS/2);
+        FastLED.setBrightness(BRIGHTNESS/3);
         fill_solid( &(leds[0]), NUM_LEDS, CRGB::Green);
         FastLED.show();
         
