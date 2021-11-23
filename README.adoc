@@ -45,7 +45,7 @@ If the LEDs stay in rainbow- or blue-white mode for longer than 1 minute, please
 
 == Examples
 
-.One day starting from 12 AM.
+.One day starting from 12 PM.
 video::img/daycycle.mp4[]
 
 == LED States
