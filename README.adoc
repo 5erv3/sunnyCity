@@ -48,9 +48,6 @@ If the LEDs stay in rainbow- or blue-white mode for longer than 1 minute, please
 .One day starting from 12 AM.
 video::img/daycycle.mp4[]
 
-.Init sequence
-video::img/initseq.mp4[]
-
 == LED States
 
 * Everything normal: <<_time_display>>
